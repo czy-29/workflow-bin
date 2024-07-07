@@ -4,7 +4,7 @@ on:
       - v**
 
 jobs:
-  build-workflow-bin:
+  build:
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
