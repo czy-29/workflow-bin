@@ -1,0 +1,15 @@
+on:
+  push:
+    tags:
+      - v**
+
+jobs:
+  build-workflow-bin:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+    - uses: actions/checkout@v4
+    - run: cargo build --release
+    - uses: softprops/action-gh-release@v2
+      with:
+        files: target/release/workflow-bin
