@@ -1,13 +1,41 @@
 use clap::Parser;
 use pushover_rs::{send_pushover_request, PushoverSound};
 use std::{env, time::Duration};
-use tokio::time::sleep;
+use tokio::{process::Command, time::sleep};
 use tracing_subscriber::fmt::{format::FmtSpan, time::ChronoLocal};
 
 #[derive(Parser, Debug)]
 enum Commands {
     Start,
+    UpgradeHugo,
     Run,
+}
+
+impl Commands {
+    fn trace(self) -> Self {
+        match self {
+            Self::Start => tracing::info!("workflow-bin start"),
+            Self::UpgradeHugo => tracing::info!("workflow-bin upgrade-hugo"),
+            Self::Run => tracing::info!("workflow-bin run"),
+        }
+        self
+    }
+
+    fn is_start(&self) -> bool {
+        if let Self::Start = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn is_run(&self) -> bool {
+        if let Self::Run = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 struct Pushover {
@@ -16,7 +44,15 @@ struct Pushover {
 }
 
 impl Pushover {
+    fn new() -> Result<Self, anyhow::Error> {
+        Ok(Self {
+            user_key: env::var("PUSHOVER_USER_KEY")?,
+            app_token: env::var("PUSHOVER_APP_TOKEN")?,
+        })
+    }
+
     async fn send(&self, message: &str, sound: PushoverSound) -> Result<(), anyhow::Error> {
+        tracing::info!("正在发送Pushover消息：{}音色：{}", message, sound);
         match send_pushover_request(
             pushover_rs::MessageBuilder::new(&self.user_key, &self.app_token, message)
                 .set_sound(sound)
@@ -52,32 +88,42 @@ pub fn install_tracing() {
         .init();
 }
 
+// __todo__: HugoConfig + fetch + unzip...
+async fn fetch_hugo() -> Result<Command, anyhow::Error> {
+    Ok(Command::new("hugo"))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     #[cfg(windows)]
     nu_ansi_term::enable_ansi_support().ok();
     install_tracing();
 
-    let pushover = Pushover {
-        user_key: env::var("PUSHOVER_USER_KEY")?,
-        app_token: env::var("PUSHOVER_APP_TOKEN")?,
-    };
+    let cmd = Commands::parse().trace();
 
-    match Commands::parse() {
-        Commands::Start => {
-            tracing::info!("workflow-bin start");
-            pushover.send("Workflow开始执行！", PushoverSound::BIKE)
-        }
-        Commands::Run => {
-            tracing::info!("workflow-bin run");
+    if cmd.is_start() {
+        Pushover::new()?
+            .send("Workflow开始执行！", PushoverSound::BIKE)
+            .await
+    } else {
+        // __todo__: workflow.toml(WorkflowConfig)
+        let _hugo = fetch_hugo().await?;
+
+        if cmd.is_run() {
+            // __todo__: hugo & deploy
             sleep(Duration::from_secs(10)).await;
 
             if true {
-                pushover.send("Workflow执行成功！", PushoverSound::MAGIC)
+                Pushover::new()?
+                    .send("Workflow执行成功！", PushoverSound::MAGIC)
+                    .await
             } else {
-                pushover.send("Workflow执行失败！", PushoverSound::FALLING)
+                Pushover::new()?
+                    .send("Workflow执行失败！", PushoverSound::FALLING)
+                    .await
             }
+        } else {
+            Ok(())
         }
     }
-    .await
 }
