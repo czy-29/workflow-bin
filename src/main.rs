@@ -1,7 +1,10 @@
 use clap::Parser;
 use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
-use std::{env, time::Duration};
+use std::{
+    env::{self, current_exe},
+    time::Duration,
+};
 use tokio::{fs, process::Command, time::sleep};
 use tracing_subscriber::fmt::{format::FmtSpan, time::ChronoLocal};
 
@@ -106,11 +109,48 @@ impl WorkflowConfig {
     }
 }
 
-// __todo__: HugoConfig + fetch + unzip...
 async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
-    tracing::info!("请求的hugo版本是：{}", config.version);
+    let version = config.version;
+
+    tracing::info!("请求的hugo版本是：{}", version);
     tracing::info!("正在校验现有hugo版本……");
-    Ok(Command::new("hugo"))
+
+    let hugo = current_exe()?.with_file_name("hugo");
+    let mut need_fetch = true;
+
+    if let Ok(output) = Command::new(hugo.clone()).arg("version").output().await {
+        let status = output.status;
+
+        if status.success() {
+            if output
+                .stdout
+                .starts_with(format!("hugo v{}", version).as_bytes())
+            {
+                need_fetch = false;
+                tracing::info!("现有hugo版本匹配！将跳过下载");
+            } else {
+                tracing::info!("现有hug版本不匹配，准备更新hugo");
+            }
+        } else {
+            return Err(anyhow::anyhow!(
+                "hugo version执行失败！退出码：{}",
+                if let Some(code) = status.code() {
+                    code.to_string()
+                } else {
+                    "None".into()
+                }
+            ));
+        }
+    } else {
+        tracing::info!("hugo不存在，准备下载hugo");
+    }
+
+    if need_fetch {
+        // __todo__: fetch + unzip...
+        tracing::info!("正在下载hugo……");
+    }
+
+    Ok(Command::new(hugo))
 }
 
 #[tokio::main]
