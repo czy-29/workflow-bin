@@ -109,6 +109,11 @@ impl WorkflowConfig {
     }
 }
 
+fn retain_decimal_places(f: f64, n: i32) -> f64 {
+    let power = 10.0f64.powi(n);
+    (f * power).round() / power
+}
+
 async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
     let version = config.version;
 
@@ -146,8 +151,31 @@ async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
     }
 
     if need_fetch {
-        // __todo__: fetch + unzip...
-        tracing::info!("正在下载hugo……");
+        #[cfg(target_os = "macos")]
+        const SUFFIX: &str = "darwin-universal.tar.gz";
+        #[cfg(target_os = "linux")]
+        const SUFFIX: &str = "Linux-64bit.tar.gz";
+        #[cfg(target_os = "windows")]
+        const SUFFIX: &str = "windows-amd64.zip";
+
+        let url = format!(
+            "https://github.com/gohugoio/hugo/releases/download/v{}/hugo_extended_{}_{}",
+            version, version, SUFFIX
+        );
+        tracing::info!("正在GET：{}", url);
+
+        let bytes = reqwest::get(url).await?.error_for_status()?.bytes().await?;
+
+        if bytes.is_empty() {
+            return Err(anyhow::anyhow!("未下载任何内容！"));
+        } else {
+            tracing::info!(
+                "已下载：{} MB",
+                retain_decimal_places(bytes.len() as f64 / 1024.0 / 1024.0, 3)
+            );
+            tracing::info!("正在解压……");
+            // __todo__: unzip + save...
+        }
     }
 
     Ok(Command::new(hugo))
