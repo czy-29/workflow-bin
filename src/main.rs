@@ -1,7 +1,8 @@
 use clap::Parser;
 use pushover_rs::{send_pushover_request, PushoverSound};
+use serde::Deserialize;
 use std::{env, time::Duration};
-use tokio::{process::Command, time::sleep};
+use tokio::{fs, process::Command, time::sleep};
 use tracing_subscriber::fmt::{format::FmtSpan, time::ChronoLocal};
 
 #[derive(Parser, Debug)]
@@ -88,8 +89,27 @@ pub fn install_tracing() {
         .init();
 }
 
+#[derive(Deserialize)]
+struct HugoConfig {
+    version: String,
+}
+
+#[derive(Deserialize)]
+struct WorkflowConfig {
+    hugo: HugoConfig,
+}
+
+impl WorkflowConfig {
+    async fn read() -> Result<Self, anyhow::Error> {
+        tracing::info!("正在读取workflow.toml……");
+        Ok(toml::from_str(&fs::read_to_string("workflow.toml").await?)?)
+    }
+}
+
 // __todo__: HugoConfig + fetch + unzip...
-async fn fetch_hugo() -> Result<Command, anyhow::Error> {
+async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
+    tracing::info!("请求的hugo版本是：{}", config.version);
+    tracing::info!("正在校验现有hugo版本……");
     Ok(Command::new("hugo"))
 }
 
@@ -106,8 +126,8 @@ async fn main() -> Result<(), anyhow::Error> {
             .send("Workflow开始执行！", PushoverSound::BIKE)
             .await
     } else {
-        // __todo__: workflow.toml(WorkflowConfig)
-        let _hugo = fetch_hugo().await?;
+        let config = WorkflowConfig::read().await?;
+        let _hugo = fetch_hugo(config.hugo).await?;
 
         if cmd.is_run() {
             // __todo__: hugo & deploy
