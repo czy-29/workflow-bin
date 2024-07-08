@@ -1778,6 +1778,7 @@ dependencies = [
  "clap",
  "nu-ansi-term 0.50.0",
  "pushover-rs",
+ "reqwest",
  "serde",
  "tokio",
  "toml",
