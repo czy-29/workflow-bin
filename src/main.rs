@@ -3,6 +3,8 @@ use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
     env::{self, current_exe},
+    ffi::OsString,
+    io::Read,
     time::Duration,
 };
 use tokio::{fs, process::Command, time::sleep};
@@ -116,6 +118,62 @@ fn retain_decimal_places(f: f64, n: i32) -> f64 {
     (f * power).round() / power
 }
 
+#[cfg(windows)]
+fn unzip(z: &[u8]) -> Result<(OsString, Vec<u8>), anyhow::Error> {
+    use std::io::Cursor;
+    use zip::ZipArchive;
+
+    let mut archive = ZipArchive::new(Cursor::new(z))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let path = file
+            .enclosed_name()
+            .ok_or(anyhow::anyhow!("压缩文件路径异常！"))?;
+        let name = path
+            .file_name()
+            .ok_or(anyhow::anyhow!("压缩文件名异常！"))?;
+
+        if name
+            .to_str()
+            .ok_or(anyhow::anyhow!("压缩文件名编码异常！"))?
+            .starts_with("hugo")
+        {
+            let mut content = Vec::new();
+            file.read_to_end(&mut content)?;
+            return Ok((name.to_owned(), content));
+        }
+    }
+
+    Err(anyhow::anyhow!("压缩包中未找到hugo执行文件！"))
+}
+
+#[cfg(not(windows))]
+fn unzip(z: &[u8]) -> Result<(OsString, Vec<u8>), anyhow::Error> {
+    use flate2::read::GzDecoder;
+    use tar::Archive;
+
+    for entry in Archive::new(GzDecoder::new(z)).entries()? {
+        let mut file = entry?;
+        let path = file.path()?.into_owned();
+        let name = path
+            .file_name()
+            .ok_or(anyhow::anyhow!("压缩文件名异常！"))?;
+
+        if name
+            .to_str()
+            .ok_or(anyhow::anyhow!("压缩文件名编码异常！"))?
+            .starts_with("hugo")
+        {
+            let mut content = Vec::new();
+            file.read_to_end(&mut content)?;
+            return Ok((name.to_owned(), content));
+        }
+    }
+
+    Err(anyhow::anyhow!("压缩包中未找到hugo执行文件！"))
+}
+
 async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
     let version = config.version;
 
@@ -177,7 +235,15 @@ async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
                 retain_decimal_places(bytes.len() as f64 / 1024.0 / 1024.0, 3)
             );
             tracing::info!("正在解压……");
-            // __todo__: unzip + save...
+
+            let (name, content) = unzip(&bytes)?;
+            tracing::info!(
+                "正在保存：{:?}（{} MB）",
+                name,
+                retain_decimal_places(content.len() as f64 / 1024.0 / 1024.0, 3)
+            );
+
+            // __todo__: save + chmod...
         }
     }
 
