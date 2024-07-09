@@ -139,9 +139,9 @@ fn unzip(z: &[u8]) -> Result<(OsString, Vec<u8>), anyhow::Error> {
             .ok_or(anyhow::anyhow!("压缩文件名编码异常！"))?
             .starts_with("hugo")
         {
-            let mut content = Vec::new();
-            file.read_to_end(&mut content)?;
-            return Ok((name.to_owned(), content));
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents)?;
+            return Ok((name.to_owned(), contents));
         }
     }
 
@@ -165,9 +165,9 @@ fn unzip(z: &[u8]) -> Result<(OsString, Vec<u8>), anyhow::Error> {
             .ok_or(anyhow::anyhow!("压缩文件名编码异常！"))?
             .starts_with("hugo")
         {
-            let mut content = Vec::new();
-            file.read_to_end(&mut content)?;
-            return Ok((name.to_owned(), content));
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents)?;
+            return Ok((name.to_owned(), contents));
         }
     }
 
@@ -236,11 +236,11 @@ async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
             );
             tracing::info!("正在解压……");
 
-            let (name, content) = unzip(&bytes)?;
+            let (name, contents) = unzip(&bytes)?;
             tracing::info!(
                 "正在保存：{:?}（{} MB）",
                 name,
-                retain_decimal_places(content.len() as f64 / 1024.0 / 1024.0, 3)
+                retain_decimal_places(contents.len() as f64 / 1024.0 / 1024.0, 3)
             );
 
             // __todo__: save + chmod...
