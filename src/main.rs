@@ -122,7 +122,8 @@ async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
     tracing::info!("请求的hugo版本是：{}", version);
     tracing::info!("正在校验现有hugo版本……");
 
-    let hugo = current_exe()?.with_file_name("hugo");
+    let exe = current_exe()?;
+    let hugo = exe.with_file_name("hugo");
     let mut need_fetch = true;
 
     if let Ok(output) = Command::new(hugo.clone()).arg("version").output().await {
