@@ -56,7 +56,9 @@ impl Pushover {
     }
 
     async fn send(&self, message: &str, sound: PushoverSound) -> Result<(), anyhow::Error> {
-        tracing::info!("正在发送Pushover消息：{}音色：{}", message, sound);
+        tracing::info!("正在发送Pushover消息：{}", message);
+        tracing::info!("Pushover音色：{}", sound);
+
         match send_pushover_request(
             pushover_rs::MessageBuilder::new(&self.user_key, &self.app_token, message)
                 .set_sound(sound)
@@ -181,6 +183,26 @@ async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
     Ok(Command::new(hugo))
 }
 
+trait AlertErr {
+    async fn alert_err(self, trigger: bool) -> Self;
+}
+
+impl<T> AlertErr for Result<T, anyhow::Error> {
+    async fn alert_err(self, trigger: bool) -> Self {
+        if let Err(err) = &self {
+            if trigger {
+                Pushover::new()?
+                    .send(
+                        &format!("Workflow执行失败！原因：\r\n{}", err),
+                        PushoverSound::FALLING,
+                    )
+                    .await?;
+            }
+        }
+        self
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     #[cfg(windows)]
@@ -194,22 +216,19 @@ async fn main() -> Result<(), anyhow::Error> {
             .send("Workflow开始执行！", PushoverSound::BIKE)
             .await
     } else {
-        let config = WorkflowConfig::read().await?;
-        let _hugo = fetch_hugo(config.hugo).await?;
+        let config = WorkflowConfig::read().await.alert_err(cmd.is_run()).await?;
+        let _hugo = fetch_hugo(config.hugo)
+            .await
+            .alert_err(cmd.is_run())
+            .await?;
 
         if cmd.is_run() {
             // __todo__: hugo & deploy
             sleep(Duration::from_secs(10)).await;
 
-            if true {
-                Pushover::new()?
-                    .send("Workflow执行成功！", PushoverSound::MAGIC)
-                    .await
-            } else {
-                Pushover::new()?
-                    .send("Workflow执行失败！", PushoverSound::FALLING)
-                    .await
-            }
+            Pushover::new()?
+                .send("Workflow执行成功！", PushoverSound::MAGIC)
+                .await
         } else {
             Ok(())
         }
