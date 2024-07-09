@@ -17,3 +17,10 @@ tokio = { version = "1.38.0", features = ["full"] }
 toml = "0.8.14"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["chrono"] }
+
+[target.'cfg(windows)'.dependencies]
+zip = "2.1.3"
+
+[target.'cfg(not(windows))'.dependencies]
+flate2 = "1.0.30"
+tar = "0.4.41"
