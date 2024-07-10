@@ -17,13 +17,14 @@ enum Commands {
 }
 
 impl Commands {
-    fn trace(self) -> Self {
-        match self {
+    fn init() -> Self {
+        let s = Self::parse();
+        match s {
             Self::Start => tracing::info!("workflow-bin start"),
             Self::UpgradeHugo => tracing::info!("workflow-bin upgrade-hugo"),
             Self::Run => tracing::info!("workflow-bin run"),
         }
-        self
+        s
     }
 
     fn is_start(&self) -> bool {
@@ -40,6 +41,12 @@ impl Commands {
         } else {
             false
         }
+    }
+}
+
+impl Drop for Commands {
+    fn drop(&mut self) {
+        tracing::info!("执行完毕！");
     }
 }
 
@@ -304,7 +311,7 @@ async fn main() -> Result<(), anyhow::Error> {
     nu_ansi_term::enable_ansi_support().ok();
     install_tracing();
 
-    let cmd = Commands::parse().trace();
+    let cmd = Commands::init();
 
     if cmd.is_start() {
         Pushover::new()?
