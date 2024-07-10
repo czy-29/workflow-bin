@@ -5,9 +5,8 @@ use std::{
     env::{self, current_exe},
     ffi::OsString,
     io::Read,
-    time::Duration,
 };
-use tokio::{fs, process::Command, time::sleep};
+use tokio::{fs, process::Command};
 use tracing_subscriber::fmt::{format::FmtSpan, time::ChronoLocal};
 
 #[derive(Parser, Debug)]
@@ -174,6 +173,13 @@ fn unzip(z: &[u8]) -> Result<(OsString, Vec<u8>), anyhow::Error> {
     Err(anyhow::anyhow!("压缩包中未找到hugo执行文件！"))
 }
 
+#[cfg(not(windows))]
+async fn chmod_exec(path: impl AsRef<std::path::Path>) -> Result<(), anyhow::Error> {
+    tracing::info!("正在设置执行权限……");
+    use std::{fs::Permissions, os::unix::prelude::PermissionsExt};
+    Ok(fs::set_permissions(path, Permissions::from_mode(0o755)).await?)
+}
+
 async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
     let version = config.version;
 
@@ -243,11 +249,33 @@ async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
                 retain_decimal_places(contents.len() as f64 / 1024.0 / 1024.0, 3)
             );
 
-            // __todo__: save + chmod...
+            let path = exe.with_file_name(name);
+            fs::write(&path, contents).await?;
+
+            #[cfg(not(windows))]
+            chmod_exec(path).await?;
         }
     }
 
     Ok(Command::new(hugo))
+}
+
+// __todo__: hugo & deploy
+async fn hugo_deploy(mut hugo: Command) -> Result<(), anyhow::Error> {
+    let status = hugo.arg("version").spawn()?.wait().await?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "hugo version执行失败！退出码：{}",
+            if let Some(code) = status.code() {
+                code.to_string()
+            } else {
+                "None".into()
+            }
+        ))
+    }
 }
 
 trait AlertErr {
@@ -284,14 +312,13 @@ async fn main() -> Result<(), anyhow::Error> {
             .await
     } else {
         let config = WorkflowConfig::read().await.alert_err(cmd.is_run()).await?;
-        let _hugo = fetch_hugo(config.hugo)
+        let hugo = fetch_hugo(config.hugo)
             .await
             .alert_err(cmd.is_run())
             .await?;
 
         if cmd.is_run() {
-            // __todo__: hugo & deploy
-            sleep(Duration::from_secs(10)).await;
+            hugo_deploy(hugo).await.alert_err(true).await?;
 
             Pushover::new()?
                 .send("Workflow执行成功！", PushoverSound::MAGIC)
