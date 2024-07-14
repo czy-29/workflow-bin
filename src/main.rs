@@ -3,7 +3,7 @@ use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
     env::{self, current_exe},
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     io::Read,
     path::{Path, PathBuf},
 };
@@ -272,7 +272,12 @@ async fn fetch_hugo(config: HugoConfig) -> Result<PathBuf, anyhow::Error> {
 }
 
 // __todo__: hugo & deploy
-async fn hugo_deploy(hugo: PathBuf) -> Result<(), anyhow::Error> {
+async fn hugo_deploy(hugo: impl AsRef<OsStr>, for_draft: bool) -> Result<(), anyhow::Error> {
+    tracing::info!(
+        "正在hugo deploy {}版本……",
+        if for_draft { "draft" } else { "production" }
+    );
+
     let public = Path::new("public");
     if public.is_dir() {
         tracing::info!("正在清理public目录……");
@@ -335,7 +340,8 @@ async fn main() -> Result<(), anyhow::Error> {
             .await?;
 
         if cmd.is_run() {
-            hugo_deploy(hugo).await.alert_err(true).await?;
+            hugo_deploy(&hugo, true).await.alert_err(true).await?;
+            hugo_deploy(&hugo, false).await.alert_err(true).await?;
 
             Pushover::new()?
                 .send("Workflow执行成功！", PushoverSound::MAGIC)
