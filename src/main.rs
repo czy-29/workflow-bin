@@ -284,13 +284,31 @@ async fn hugo_deploy(hugo: impl AsRef<OsStr>, for_draft: bool) -> Result<(), any
         remove_dir_all(public).await?;
     }
 
-    let status = Command::new(hugo).arg("version").spawn()?.wait().await?;
+    let mut hugo = Command::new(hugo);
+    let hugo = if for_draft {
+        hugo.arg("-b")
+            .arg(env::var("HUGO_DRAFT_BASE_URL")?)
+            .arg("-D")
+            .arg("-F")
+    } else {
+        &mut hugo
+    };
+
+    tracing::info!(
+        "正在执行：hugo {}",
+        hugo.as_std()
+            .get_args()
+            .collect::<Vec<&OsStr>>()
+            .join(" ".as_ref())
+            .to_string_lossy()
+    );
+    let status = hugo.spawn()?.wait().await?;
 
     if status.success() {
         Ok(())
     } else {
         Err(anyhow::anyhow!(
-            "hugo version执行失败！退出码：{}",
+            "hugo执行失败！退出码：{}",
             if let Some(code) = status.code() {
                 code.to_string()
             } else {
