@@ -5,7 +5,7 @@ use std::{
     env::{self, current_exe},
     ffi::OsString,
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
 };
 use tokio::{
     fs::{self, remove_dir_all},
@@ -191,7 +191,7 @@ async fn chmod_exec(path: impl AsRef<std::path::Path>) -> Result<(), anyhow::Err
     Ok(fs::set_permissions(path, Permissions::from_mode(0o755)).await?)
 }
 
-async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
+async fn fetch_hugo(config: HugoConfig) -> Result<PathBuf, anyhow::Error> {
     let version = config.version;
 
     tracing::info!("请求的hugo版本是：{}", version);
@@ -268,18 +268,18 @@ async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
         }
     }
 
-    Ok(Command::new(hugo))
+    Ok(hugo)
 }
 
 // __todo__: hugo & deploy
-async fn hugo_deploy(mut hugo: Command) -> Result<(), anyhow::Error> {
+async fn hugo_deploy(hugo: PathBuf) -> Result<(), anyhow::Error> {
     let public = Path::new("public");
     if public.is_dir() {
         tracing::info!("正在清理public目录……");
         remove_dir_all(public).await?;
     }
 
-    let status = hugo.arg("version").spawn()?.wait().await?;
+    let status = Command::new(hugo).arg("version").spawn()?.wait().await?;
 
     if status.success() {
         Ok(())
