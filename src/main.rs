@@ -5,8 +5,12 @@ use std::{
     env::{self, current_exe},
     ffi::OsString,
     io::Read,
+    path::Path,
 };
-use tokio::{fs, process::Command};
+use tokio::{
+    fs::{self, remove_dir_all},
+    process::Command,
+};
 use tracing_subscriber::fmt::{format::FmtSpan, time::ChronoLocal};
 
 #[derive(Parser, Debug)]
@@ -269,6 +273,12 @@ async fn fetch_hugo(config: HugoConfig) -> Result<Command, anyhow::Error> {
 
 // __todo__: hugo & deploy
 async fn hugo_deploy(mut hugo: Command) -> Result<(), anyhow::Error> {
+    let public = Path::new("public");
+    if public.is_dir() {
+        tracing::info!("正在清理public目录……");
+        remove_dir_all(public).await?;
+    }
+
     let status = hugo.arg("version").spawn()?.wait().await?;
 
     if status.success() {
