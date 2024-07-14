@@ -201,7 +201,7 @@ async fn fetch_hugo(config: HugoConfig) -> Result<PathBuf, anyhow::Error> {
     let hugo = exe.with_file_name("hugo");
     let mut need_fetch = true;
 
-    if let Ok(output) = Command::new(hugo.clone()).arg("version").output().await {
+    if let Ok(output) = Command::new(&hugo).arg("version").output().await {
         let status = output.status;
 
         if status.success() {
