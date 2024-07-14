@@ -285,23 +285,30 @@ async fn hugo_deploy(hugo: impl AsRef<OsStr>, for_draft: bool) -> Result<(), any
     }
 
     let mut hugo = Command::new(hugo);
-    let hugo = if for_draft {
-        hugo.arg("-b")
-            .arg(env::var("HUGO_DRAFT_BASE_URL")?)
-            .arg("-D")
-            .arg("-F")
+    let (hugo, base_url) = if for_draft {
+        let base_url = env::var("HUGO_DRAFT_BASE_URL")?;
+        (
+            hugo.arg("-b").arg(&base_url).arg("-D").arg("-F"),
+            Some(base_url),
+        )
     } else {
-        &mut hugo
+        (&mut hugo, None)
     };
 
-    tracing::info!(
-        "正在执行：hugo {}",
-        hugo.as_std()
-            .get_args()
-            .collect::<Vec<&OsStr>>()
-            .join(" ".as_ref())
-            .to_string_lossy()
-    );
+    if let Some(base_url) = base_url {
+        tracing::info!(
+            "正在执行：hugo {}",
+            hugo.as_std()
+                .get_args()
+                .collect::<Vec<&OsStr>>()
+                .join(" ".as_ref())
+                .to_string_lossy()
+                .replace(&base_url, "****")
+        );
+    } else {
+        tracing::info!("正在执行：hugo");
+    }
+
     let status = hugo.spawn()?.wait().await?;
 
     if status.success() {
