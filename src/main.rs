@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::{
-    fs::{self, create_dir_all, remove_dir_all},
+    fs::{self, remove_dir_all},
     process::Command,
     task::spawn_blocking,
 };
@@ -323,7 +323,6 @@ where
     P: AsRef<Path> + Send + 'static,
     Q: AsRef<Path> + Send + 'static,
 {
-    create_dir_all(&to).await?;
     Ok(spawn_blocking(move || dir::copy(from, to, &Default::default())).await??)
 }
 
@@ -352,7 +351,7 @@ async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(
     remove_public().await?;
 
     tracing::info!("正在拷贝public目录……");
-    copy_dir("../public", "public").await?;
+    copy_dir("../public", "").await?;
 
     // __todo__: add + commit + push
 
