@@ -15,6 +15,7 @@ opendal = { version = "0.47.3", features = ["services-oss"] }
 pushover-rs = "0.3.18"
 reqwest = "0.12.5"
 serde = { version = "1.0.204", features = ["derive"] }
+sysinfo = "0.30.13"
 tokio = { version = "1.38.0", features = ["full"] }
 toml = "0.8.14"
 tracing = "0.1.40"
