@@ -1,5 +1,9 @@
+mod opendal_fs;
+
 use clap::Parser;
 use fs_extra::dir;
+use opendal::{services::Oss, Operator};
+use opendal_fs::upload_file;
 use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
@@ -133,7 +137,6 @@ struct OssSyncConfig {
     dirs: Vec<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct OssDeployConfig {
     sync: OssSyncConfig,
@@ -393,13 +396,35 @@ async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(
     Ok(remove_dir_all(repo).await?)
 }
 
-// __todo__
-async fn deploy_oss(_config: &OssDeployConfig, for_draft: bool) -> Result<(), anyhow::Error> {
+async fn deploy_oss(config: &OssDeployConfig, for_draft: bool) -> Result<(), anyhow::Error> {
     tracing::info!(
         "正在deploy oss {}",
         if for_draft { "draft" } else { "prod" }
     );
-    Ok(())
+    set_current_dir("public")?;
+
+    tracing::info!("正在初始化Operator……");
+    let mut oss = Oss::default();
+
+    oss.root(&config.sync.root);
+    oss.access_key_id(config.access_key_id.as_ref().unwrap());
+    oss.access_key_secret(config.access_key_secret.as_ref().unwrap());
+
+    if for_draft {
+        oss.bucket(&env_var("OSS_DRAFT_BUCKET")?);
+        oss.endpoint(&env_var("OSS_DRAFT_ENDPOINT")?);
+    } else {
+        oss.bucket(&env_var("OSS_PROD_BUCKET")?);
+        oss.endpoint(&env_var("OSS_PROD_ENDPOINT")?);
+    }
+
+    let op = Operator::new(oss)?.finish();
+
+    // __todo__: upload_file(s), sync_dir(s)
+    tracing::info!("开始上传文件……");
+    upload_file(&op, "index.html", "index.html").await?;
+
+    Ok(set_current_dir("..")?)
 }
 
 async fn hugo_deploy(
