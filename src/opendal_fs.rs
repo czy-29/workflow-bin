@@ -34,6 +34,13 @@ impl ConcurrentUploadTasks {
         self.push_single_file(path, path).await
     }
 
+    pub async fn push_str_seq(&mut self, seq: &Vec<String>) -> Result<(), io::Error> {
+        for path in seq {
+            self.push_str(path).await?;
+        }
+        Ok(())
+    }
+
     pub async fn join(self) -> Result<usize, anyhow::Error> {
         let tasks = self.handles.len();
         let mut results = Vec::new();

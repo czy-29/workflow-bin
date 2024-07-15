@@ -406,9 +406,10 @@ async fn deploy_oss(config: &OssDeployConfig, for_draft: bool) -> Result<(), any
     set_current_dir("public")?;
 
     tracing::info!("正在初始化Operator……");
+    let sync = &config.sync;
     let mut oss = Oss::default();
 
-    oss.root(&config.sync.root);
+    oss.root(&sync.root);
     oss.access_key_id(config.access_key_id.as_ref().unwrap());
     oss.access_key_secret(config.access_key_secret.as_ref().unwrap());
 
@@ -422,11 +423,12 @@ async fn deploy_oss(config: &OssDeployConfig, for_draft: bool) -> Result<(), any
 
     let op = Operator::new(oss)?.finish();
 
-    // __todo__: upload_file(s), sync_dir(s)
     tracing::info!("开始上传文件……");
-    let mut uploads = ConcurrentUploadTasks::new(op);
-    uploads.push_str("index.html").await?;
-    uploads.join().await?;
+    let mut files = ConcurrentUploadTasks::new(op);
+    files.push_str_seq(&sync.files).await?;
+    files.join().await?;
+
+    // __todo__: sync_dir(s)
 
     Ok(set_current_dir("..")?)
 }
