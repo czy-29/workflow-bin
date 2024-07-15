@@ -43,9 +43,7 @@ impl ConcurrentUploadTasks {
         }
 
         for r in results {
-            if let Err(e) = r {
-                return Err(e.into());
-            }
+            r?;
         }
 
         Ok(tasks)
