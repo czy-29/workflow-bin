@@ -125,9 +125,20 @@ struct GithubDeployConfig {
     access_token: Option<String>,
 }
 
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct OssDeployConfig {
+    root: String,
+    files: Vec<String>,
+    dirs: Vec<String>,
+    access_key_id: Option<String>,
+    access_key_secret: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct DeployConfig {
     github: GithubDeployConfig,
+    oss: OssDeployConfig,
 }
 
 #[derive(Deserialize)]
@@ -376,6 +387,15 @@ async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(
     Ok(remove_dir_all(repo).await?)
 }
 
+// __todo__
+async fn deploy_oss(_config: &OssDeployConfig, for_draft: bool) -> Result<(), anyhow::Error> {
+    tracing::info!(
+        "正在deploy oss {}",
+        if for_draft { "draft" } else { "prod" }
+    );
+    Ok(())
+}
+
 async fn hugo_deploy(
     hugo: impl AsRef<OsStr>,
     config: &DeployConfig,
@@ -414,8 +434,8 @@ async fn hugo_deploy(
     }
     spawn_command(hugo, "hugo").await?;
 
-    // __todo__: deploy oss
-    deploy_github(&config.github, for_draft).await
+    deploy_github(&config.github, for_draft).await?;
+    deploy_oss(&config.oss, for_draft).await
 }
 
 trait AlertErr {
@@ -464,6 +484,9 @@ async fn main() -> Result<(), anyhow::Error> {
                     .alert_err(true)
                     .await?,
             );
+            config.oss.access_key_id = Some(env_var("OSS_ACCESS_KEY_ID").alert_err(true).await?);
+            config.oss.access_key_secret =
+                Some(env_var("OSS_ACCESS_KEY_SECRET").alert_err(true).await?);
 
             hugo_deploy(&hugo, &config, true)
                 .await
