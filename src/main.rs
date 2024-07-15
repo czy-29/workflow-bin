@@ -1,4 +1,5 @@
 use clap::Parser;
+use fs_extra::dir;
 use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
@@ -8,8 +9,9 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::{
-    fs::{self, remove_dir_all},
+    fs::{self, create_dir_all, remove_dir_all},
     process::Command,
+    task::spawn_blocking,
 };
 use tracing_subscriber::fmt::{format::FmtSpan, time::ChronoLocal};
 
@@ -316,6 +318,15 @@ async fn remove_public() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+async fn copy_dir<P, Q>(from: P, to: Q) -> Result<u64, anyhow::Error>
+where
+    P: AsRef<Path> + Send + 'static,
+    Q: AsRef<Path> + Send + 'static,
+{
+    create_dir_all(&to).await?;
+    Ok(spawn_blocking(move || dir::copy(from, to, &Default::default())).await??)
+}
+
 async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(), anyhow::Error> {
     tracing::info!(
         "正在deploy github {}",
@@ -339,7 +350,11 @@ async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(
     }
 
     remove_public().await?;
-    // __todo__: copy + add + commit + push
+
+    tracing::info!("正在拷贝public目录……");
+    copy_dir("../public", "public").await?;
+
+    // __todo__: add + commit + push
 
     tracing::info!("正在清理{}目录……", repo);
     set_current_dir("..")?;
