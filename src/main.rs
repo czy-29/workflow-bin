@@ -353,7 +353,23 @@ async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(
     tracing::info!("正在拷贝public目录……");
     copy_dir("../public", "").await?;
 
-    // __todo__: add + commit + push
+    tracing::info!("正在提交……");
+    spawn_command(Command::new("git").arg("add").arg("."), "git").await?;
+
+    if Command::new("git")
+        .arg("commit")
+        .arg("-m")
+        .arg("Deploy")
+        .spawn()?
+        .wait()
+        .await?
+        .success()
+    {
+        tracing::info!("正在执行：git push");
+        spawn_command(Command::new("git").arg("push"), "git").await?;
+    } else {
+        tracing::warn!("没有可以提交的内容！");
+    }
 
     tracing::info!("正在清理{}目录……", repo);
     set_current_dir("..")?;
