@@ -2,7 +2,7 @@ use clap::Parser;
 use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
-    env::{self, current_exe},
+    env::{self, current_exe, set_current_dir},
     ffi::{OsStr, OsString},
     io::Read,
     path::{Path, PathBuf},
@@ -54,6 +54,10 @@ impl Drop for Commands {
     }
 }
 
+fn env_var(key: impl AsRef<OsStr>) -> Result<String, anyhow::Error> {
+    Ok(env::var(key)?)
+}
+
 struct Pushover {
     user_key: String,
     app_token: String,
@@ -62,8 +66,8 @@ struct Pushover {
 impl Pushover {
     fn new() -> Result<Self, anyhow::Error> {
         Ok(Self {
-            user_key: env::var("PUSHOVER_USER_KEY")?,
-            app_token: env::var("PUSHOVER_APP_TOKEN")?,
+            user_key: env_var("PUSHOVER_USER_KEY")?,
+            app_token: env_var("PUSHOVER_APP_TOKEN")?,
         })
     }
 
@@ -112,8 +116,22 @@ struct HugoConfig {
 }
 
 #[derive(Deserialize)]
+struct GithubDeployConfig {
+    username: String,
+    org: String,
+    repo: String,
+    access_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DeployConfig {
+    github: GithubDeployConfig,
+}
+
+#[derive(Deserialize)]
 struct WorkflowConfig {
     hugo: HugoConfig,
+    deploy: DeployConfig,
 }
 
 impl WorkflowConfig {
@@ -271,8 +289,58 @@ async fn fetch_hugo(config: HugoConfig) -> Result<PathBuf, anyhow::Error> {
     Ok(hugo)
 }
 
-// __todo__: hugo & deploy
-async fn hugo_deploy(hugo: impl AsRef<OsStr>, for_draft: bool) -> Result<(), anyhow::Error> {
+async fn spawn_command(cmd: &mut Command, hint: &str) -> Result<(), anyhow::Error> {
+    let status = cmd.spawn()?.wait().await?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "{}命令执行失败！退出码：{}",
+            hint,
+            if let Some(code) = status.code() {
+                code.to_string()
+            } else {
+                "None".into()
+            }
+        ))
+    }
+}
+
+async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(), anyhow::Error> {
+    tracing::info!(
+        "正在deploy github {}",
+        if for_draft { "draft" } else { "main" }
+    );
+
+    let repo = &config.repo;
+    let access_token = config.access_token.as_ref().unwrap();
+    let url = format!(
+        "https://{}:{}@github.com/{}/{}.git",
+        config.username, access_token, config.org, repo
+    );
+
+    tracing::info!("正在执行：git clone {}", url.replace(access_token, "****"));
+    spawn_command(Command::new("git").arg("clone").arg(url), "git").await?;
+    set_current_dir(repo)?;
+
+    if for_draft {
+        tracing::info!("正在执行：git checkout draft");
+        spawn_command(Command::new("git").arg("checkout").arg("draft"), "git").await?;
+    }
+
+    // __todo__: delete + copy + add + commit + push
+
+    tracing::info!("正在清理{}目录……", repo);
+    set_current_dir("..")?;
+    Ok(remove_dir_all(repo).await?)
+}
+
+async fn hugo_deploy(
+    hugo: impl AsRef<OsStr>,
+    config: &DeployConfig,
+    for_draft: bool,
+) -> Result<(), anyhow::Error> {
     tracing::info!(
         "正在hugo deploy {}版本……",
         if for_draft { "draft" } else { "production" }
@@ -286,7 +354,7 @@ async fn hugo_deploy(hugo: impl AsRef<OsStr>, for_draft: bool) -> Result<(), any
 
     let mut hugo = Command::new(hugo);
     let (hugo, base_url) = if for_draft {
-        let base_url = env::var("HUGO_DRAFT_BASE_URL")?;
+        let base_url = env_var("HUGO_DRAFT_BASE_URL")?;
         (
             hugo.arg("-b").arg(&base_url).arg("-D").arg("-F"),
             Some(base_url),
@@ -308,21 +376,10 @@ async fn hugo_deploy(hugo: impl AsRef<OsStr>, for_draft: bool) -> Result<(), any
     } else {
         tracing::info!("正在执行：hugo");
     }
+    spawn_command(hugo, "hugo").await?;
 
-    let status = hugo.spawn()?.wait().await?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(anyhow::anyhow!(
-            "hugo执行失败！退出码：{}",
-            if let Some(code) = status.code() {
-                code.to_string()
-            } else {
-                "None".into()
-            }
-        ))
-    }
+    // __todo__: deploy oss
+    deploy_github(&config.github, for_draft).await
 }
 
 trait AlertErr {
@@ -365,8 +422,21 @@ async fn main() -> Result<(), anyhow::Error> {
             .await?;
 
         if cmd.is_run() {
-            hugo_deploy(&hugo, true).await.alert_err(true).await?;
-            hugo_deploy(&hugo, false).await.alert_err(true).await?;
+            let mut config = config.deploy;
+            config.github.access_token = Some(
+                env_var("DEPLOY_GITHUB_ACCESS_TOKEN")
+                    .alert_err(true)
+                    .await?,
+            );
+
+            hugo_deploy(&hugo, &config, true)
+                .await
+                .alert_err(true)
+                .await?;
+            hugo_deploy(&hugo, &config, false)
+                .await
+                .alert_err(true)
+                .await?;
 
             Pushover::new()?
                 .send("Workflow执行成功！", PushoverSound::MAGIC)
