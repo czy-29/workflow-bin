@@ -307,6 +307,15 @@ async fn spawn_command(cmd: &mut Command, hint: &str) -> Result<(), anyhow::Erro
     }
 }
 
+async fn remove_public() -> Result<(), anyhow::Error> {
+    let public = Path::new("public");
+    if public.is_dir() {
+        tracing::info!("正在清理public目录……");
+        remove_dir_all(public).await?;
+    }
+    Ok(())
+}
+
 async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(), anyhow::Error> {
     tracing::info!(
         "正在deploy github {}",
@@ -329,7 +338,8 @@ async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(
         spawn_command(Command::new("git").arg("checkout").arg("draft"), "git").await?;
     }
 
-    // __todo__: delete + copy + add + commit + push
+    remove_public().await?;
+    // __todo__: copy + add + commit + push
 
     tracing::info!("正在清理{}目录……", repo);
     set_current_dir("..")?;
@@ -346,11 +356,7 @@ async fn hugo_deploy(
         if for_draft { "draft" } else { "production" }
     );
 
-    let public = Path::new("public");
-    if public.is_dir() {
-        tracing::info!("正在清理public目录……");
-        remove_dir_all(public).await?;
-    }
+    remove_public().await?;
 
     let mut hugo = Command::new(hugo);
     let (hugo, base_url) = if for_draft {
