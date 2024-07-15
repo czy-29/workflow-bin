@@ -127,10 +127,16 @@ struct GithubDeployConfig {
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
-struct OssDeployConfig {
+struct OssSyncConfig {
     root: String,
     files: Vec<String>,
     dirs: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct OssDeployConfig {
+    sync: OssSyncConfig,
     access_key_id: Option<String>,
     access_key_secret: Option<String>,
 }
