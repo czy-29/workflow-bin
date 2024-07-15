@@ -5,7 +5,7 @@ use clap::Parser;
 use fs_extra::dir;
 use mem_probe::MemProbe;
 use opendal::{services::Oss, Operator};
-use opendal_fs::upload_file;
+use opendal_fs::ConcurrentUploadTasks;
 use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
@@ -424,7 +424,9 @@ async fn deploy_oss(config: &OssDeployConfig, for_draft: bool) -> Result<(), any
 
     // __todo__: upload_file(s), sync_dir(s)
     tracing::info!("开始上传文件……");
-    upload_file(&op, "index.html", "index.html").await?;
+    let mut uploads = ConcurrentUploadTasks::new(op);
+    uploads.push_str("index.html").await?;
+    uploads.join().await?;
 
     Ok(set_current_dir("..")?)
 }
