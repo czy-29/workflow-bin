@@ -488,10 +488,13 @@ async fn main() -> Result<(), anyhow::Error> {
             config.oss.access_key_secret =
                 Some(env_var("OSS_ACCESS_KEY_SECRET").alert_err(true).await?);
 
+            tracing::info!("================");
             hugo_deploy(&hugo, &config, true)
                 .await
                 .alert_err(true)
                 .await?;
+
+            tracing::info!("================");
             hugo_deploy(&hugo, &config, false)
                 .await
                 .alert_err(true)
