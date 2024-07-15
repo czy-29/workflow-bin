@@ -1,7 +1,9 @@
+mod mem_probe;
 mod opendal_fs;
 
 use clap::Parser;
 use fs_extra::dir;
+use mem_probe::MemProbe;
 use opendal::{services::Oss, Operator};
 use opendal_fs::upload_file;
 use pushover_rs::{send_pushover_request, PushoverSound};
@@ -509,6 +511,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .await?;
 
         if cmd.is_run() {
+            let mp = MemProbe::new();
             let mut config = config.deploy;
             config.github.access_token = Some(
                 env_var("DEPLOY_GITHUB_ACCESS_TOKEN")
@@ -531,8 +534,15 @@ async fn main() -> Result<(), anyhow::Error> {
                 .alert_err(true)
                 .await?;
 
+            let (mb, sample) = mp.join_and_get_mb_sample();
             Pushover::new()?
-                .send("Workflow执行成功！", PushoverSound::MAGIC)
+                .send(
+                    &format!(
+                        "Workflow执行成功！\r\n峰值内存：{} MB\r\n共采样：{} 次",
+                        mb, sample
+                    ),
+                    PushoverSound::MAGIC,
+                )
                 .await
         } else {
             Ok(())
