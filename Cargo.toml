@@ -20,6 +20,7 @@ tokio = { version = "1.38.0", features = ["full"] }
 toml = "0.8.14"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["chrono"] }
+walkdir = "2.5.0"
 
 [target.'cfg(windows)'.dependencies]
 zip = "2.1.3"
