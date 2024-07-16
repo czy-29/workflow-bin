@@ -5,7 +5,7 @@ use clap::Parser;
 use fs_extra::dir;
 use mem_probe::MemProbe;
 use opendal::{services::Oss, Operator};
-use opendal_fs::ConcurrentUploadTasks;
+use opendal_fs::{sync_dir, ConcurrentUploadTasks};
 use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
@@ -131,7 +131,6 @@ struct GithubDeployConfig {
     access_token: Option<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct OssSyncConfig {
     root: String,
@@ -424,11 +423,15 @@ async fn deploy_oss(config: &OssDeployConfig, for_draft: bool) -> Result<(), any
     let op = Operator::new(oss)?.finish();
 
     tracing::info!("开始上传文件……");
-    let mut files = ConcurrentUploadTasks::new(op);
+    let mut files = ConcurrentUploadTasks::new(op.clone());
     files.push_str_seq(&sync.files).await?;
     files.join().await?;
 
-    // __todo__: sync_dir(s)
+    tracing::info!("开始同步目录……");
+    for dir in &sync.dirs {
+        tracing::info!("正在同步目录：{}", dir);
+        sync_dir(&op, dir).await?;
+    }
 
     Ok(set_current_dir("..")?)
 }

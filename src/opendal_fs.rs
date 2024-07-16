@@ -1,6 +1,13 @@
 use opendal::Operator;
-use std::{io, path::Path};
-use tokio::{fs, task::JoinHandle};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
+use tokio::{
+    fs,
+    task::{spawn_blocking, JoinHandle},
+};
+use walkdir::WalkDir;
 
 pub struct ConcurrentUploadTasks {
     op: Operator,
@@ -30,6 +37,19 @@ impl ConcurrentUploadTasks {
         })))
     }
 
+    pub async fn push_path(&mut self, path: impl AsRef<Path>) -> Result<(), anyhow::Error> {
+        let path = path.as_ref();
+        Ok(self
+            .push_single_file(
+                path,
+                &path
+                    .to_str()
+                    .ok_or(anyhow::anyhow!("非法路径！"))?
+                    .replace("\\", "/"),
+            )
+            .await?)
+    }
+
     pub async fn push_str(&mut self, path: &str) -> Result<(), io::Error> {
         self.push_single_file(path, path).await
     }
@@ -55,4 +75,40 @@ impl ConcurrentUploadTasks {
 
         Ok(tasks)
     }
+}
+
+pub fn collect_files_blocking(dir: impl AsRef<Path>) -> Result<Vec<PathBuf>, anyhow::Error> {
+    let mut files = Vec::new();
+
+    for entry in WalkDir::new(dir) {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            files.push(path.to_owned());
+        }
+    }
+
+    Ok(files)
+}
+
+pub async fn collect_files(dir: &str) -> Result<Vec<PathBuf>, anyhow::Error> {
+    let dir = dir.to_owned();
+    spawn_blocking(move || collect_files_blocking(dir)).await?
+}
+
+pub async fn sync_dir(op: &Operator, dir: &str) -> Result<usize, anyhow::Error> {
+    tracing::info!("正在加载目录……");
+    let files = collect_files(dir).await?;
+
+    tracing::info!("正在删除旧target……");
+    op.remove_all(dir).await?;
+
+    tracing::info!("开始上传……");
+    let mut upload = ConcurrentUploadTasks::new(op.clone());
+
+    for path in files {
+        upload.push_path(path).await?;
+    }
+
+    upload.join().await
 }
