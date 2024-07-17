@@ -541,13 +541,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 .alert_err(true)
                 .await?;
 
-            let (mb, sample) = mp.join_and_get_mb_sample();
+            let (mb, _) = mp.join_and_get_mb_sample();
             Pushover::new()?
                 .send(
-                    &format!(
-                        "Workflow执行成功！\r\n峰值内存：{} MB\r\n共采样：{} 次",
-                        mb, sample
-                    ),
+                    &format!("Workflow执行成功！\r\n峰值内存：{} MB", mb),
                     PushoverSound::MAGIC,
                 )
                 .await
