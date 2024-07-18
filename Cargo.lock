@@ -2543,6 +2543,7 @@ dependencies = [
  "clap",
  "flate2",
  "fs_extra",
+ "mime_guess",
  "nu-ansi-term 0.50.0",
  "opendal",
  "pushover-rs",

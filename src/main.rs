@@ -1,11 +1,13 @@
 mod mem_probe;
 mod opendal_fs;
+mod opendal_mime_guess;
 
 use clap::Parser;
 use fs_extra::dir;
 use mem_probe::MemProbe;
 use opendal::{services::Oss, Operator};
 use opendal_fs::{sync_dir, ConcurrentUploadTasks};
+use opendal_mime_guess::MimeGuessLayer;
 use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
@@ -420,7 +422,9 @@ async fn deploy_oss(config: &OssDeployConfig, for_draft: bool) -> Result<(), any
         oss.endpoint(&env_var("OSS_PROD_ENDPOINT")?);
     }
 
-    let op = Operator::new(oss)?.finish();
+    let op = Operator::new(oss)?
+        .layer(MimeGuessLayer::default())
+        .finish();
 
     tracing::info!("开始上传文件……");
     let mut files = ConcurrentUploadTasks::new(op.clone());
