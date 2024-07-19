@@ -24,26 +24,6 @@ use opendal::{raw::*, Result};
 /// This layer uses [mime_guess](https://crates.io/crates/mime_guess) to automatically
 /// set `Content-Type` based on the file extension in the operation path.
 ///
-/// Specifically, when you call the following methods:
-/// - [Operator::write](../struct.Operator.html#method.write)
-/// - [Operator::write_with](../struct.Operator.html#method.write_with)
-/// - [Operator::writer](../struct.Operator.html#method.writer)
-/// - [Operator::writer_with](../struct.Operator.html#method.writer_with)
-/// - [Operator::stat](../struct.Operator.html#method.stat)
-/// - [Operator::stat_with](../struct.Operator.html#method.stat_with)
-/// - [Operator::list_with](../struct.Operator.html#method.list_with)
-/// - [Operator::lister_with](../struct.Operator.html#method.lister_with)
-/// - [BlockingOperator::write](../struct.BlockingOperator.html#method.write)
-/// - [BlockingOperator::write_with](../struct.BlockingOperator.html#method.write_with)
-/// - [BlockingOperator::writer](../struct.BlockingOperator.html#method.writer)
-/// - [BlockingOperator::writer_with](../struct.BlockingOperator.html#method.writer_with)
-/// - [BlockingOperator::stat](../struct.BlockingOperator.html#method.stat)
-/// - [BlockingOperator::stat_with](../struct.BlockingOperator.html#method.stat_with)
-/// - [BlockingOperator::list_with](../struct.BlockingOperator.html#method.list_with)
-/// - [BlockingOperator::lister_with](../struct.BlockingOperator.html#method.lister_with)
-///
-/// Your operation will automatically carry `Content-Type` information.
-///
 /// However, please note that this layer will not overwrite the `content_type` you manually set,
 /// nor will it overwrite the `content_type` provided by backend services.
 ///
@@ -75,14 +55,9 @@ use opendal::{raw::*, Result};
 ///     .layer(MimeGuessLayer::default())
 ///     .finish();
 /// ```
-#[derive(Debug, Copy, Clone, Default)]
-// Developer note:
-// The inclusion of a private unit tuple inside the struct here is to force users to
-// use `MimeGuessLayer::default()` instead of directly using `MimeGuessLayer` to
-// construct instances.
-// This way, when we add some optional config methods to this layer in the future,
-// the old code can still work perfectly without any breaking changes.
-pub struct MimeGuessLayer(());
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct MimeGuessLayer {}
 
 impl<A: Access> Layer<A> for MimeGuessLayer {
     type LayeredAccess = MimeGuessAccessor<A>;
@@ -100,28 +75,28 @@ fn mime_from_path(path: &str) -> Option<&str> {
 }
 
 fn opwrite_with_mime(path: &str, op: OpWrite) -> OpWrite {
-    if op.content_type().is_none() {
-        if let Some(mime) = mime_from_path(path) {
-            op.with_content_type(mime)
-        } else {
-            op
-        }
-    } else {
-        op
+    if op.content_type().is_some() {
+        return op;
     }
+
+    if let Some(mime) = mime_from_path(path) {
+        return op.with_content_type(mime);
+    }
+
+    op
 }
 
 fn rpstat_with_mime(path: &str, rp: RpStat) -> RpStat {
     rp.map_metadata(|metadata| {
-        if metadata.content_type().is_none() {
-            if let Some(mime) = mime_from_path(path) {
-                metadata.with_content_type(mime.into())
-            } else {
-                metadata
-            }
-        } else {
-            metadata
+        if metadata.content_type().is_some() {
+            return metadata;
         }
+
+        if let Some(mime) = mime_from_path(path) {
+            return metadata.with_content_type(mime.into());
+        }
+
+        metadata
     })
 }
 
@@ -190,70 +165,33 @@ mod tests {
 
     #[tokio::test]
     async fn test_async() {
-        let op_control_group = Operator::new(Memory::default()).unwrap().finish();
-
-        op_control_group.write("test0.html", DATA).await.unwrap();
-        assert_eq!(
-            op_control_group
-                .stat("test0.html")
-                .await
-                .unwrap()
-                .content_type(),
-            None
-        );
-
-        op_control_group
-            .write_with("test1.html", DATA)
-            .content_type(CUSTOM)
-            .await
-            .unwrap();
-
-        assert_eq!(
-            op_control_group
-                .stat("test1.html")
-                .await
-                .unwrap()
-                .content_type(),
-            Some(CUSTOM)
-        );
-
-        let op_guess = Operator::new(Memory::default())
+        let op = Operator::new(Memory::default())
             .unwrap()
             .layer(MimeGuessLayer::default())
             .finish();
 
-        op_guess.write("test0.html", DATA).await.unwrap();
+        op.write("test0.html", DATA).await.unwrap();
         assert_eq!(
-            op_guess.stat("test0.html").await.unwrap().content_type(),
+            op.stat("test0.html").await.unwrap().content_type(),
             Some(HTML)
         );
 
-        op_guess.write("test1.asdfghjkl", DATA).await.unwrap();
+        op.write("test1.asdfghjkl", DATA).await.unwrap();
         assert_eq!(
-            op_guess
-                .stat("test1.asdfghjkl")
-                .await
-                .unwrap()
-                .content_type(),
+            op.stat("test1.asdfghjkl").await.unwrap().content_type(),
             None
         );
 
-        op_guess
-            .write_with("test2.html", DATA)
+        op.write_with("test2.html", DATA)
             .content_type(CUSTOM)
             .await
             .unwrap();
-
         assert_eq!(
-            op_guess.stat("test2.html").await.unwrap().content_type(),
+            op.stat("test2.html").await.unwrap().content_type(),
             Some(CUSTOM)
         );
 
-        let entries = op_guess
-            .list_with("")
-            .metakey(Metakey::Complete)
-            .await
-            .unwrap();
+        let entries = op.list_with("").metakey(Metakey::Complete).await.unwrap();
         assert_eq!(entries[0].metadata().content_type(), Some(HTML));
         assert_eq!(entries[1].metadata().content_type(), None);
         assert_eq!(entries[2].metadata().content_type(), Some(CUSTOM));
@@ -261,62 +199,25 @@ mod tests {
 
     #[test]
     fn test_blocking() {
-        let op_control_group = Operator::new(Memory::default())
-            .unwrap()
-            .finish()
-            .blocking();
-
-        op_control_group.write("test0.html", DATA).unwrap();
-        assert_eq!(
-            op_control_group.stat("test0.html").unwrap().content_type(),
-            None
-        );
-
-        op_control_group
-            .write_with("test1.html", DATA)
-            .content_type(CUSTOM)
-            .call()
-            .unwrap();
-
-        assert_eq!(
-            op_control_group.stat("test1.html").unwrap().content_type(),
-            Some(CUSTOM)
-        );
-
-        let op_guess = Operator::new(Memory::default())
+        let op = Operator::new(Memory::default())
             .unwrap()
             .layer(MimeGuessLayer::default())
             .finish()
             .blocking();
 
-        op_guess.write("test0.html", DATA).unwrap();
-        assert_eq!(
-            op_guess.stat("test0.html").unwrap().content_type(),
-            Some(HTML)
-        );
+        op.write("test0.html", DATA).unwrap();
+        assert_eq!(op.stat("test0.html").unwrap().content_type(), Some(HTML));
 
-        op_guess.write("test1.asdfghjkl", DATA).unwrap();
-        assert_eq!(
-            op_guess.stat("test1.asdfghjkl").unwrap().content_type(),
-            None
-        );
+        op.write("test1.asdfghjkl", DATA).unwrap();
+        assert_eq!(op.stat("test1.asdfghjkl").unwrap().content_type(), None);
 
-        op_guess
-            .write_with("test2.html", DATA)
+        op.write_with("test2.html", DATA)
             .content_type(CUSTOM)
             .call()
             .unwrap();
+        assert_eq!(op.stat("test2.html").unwrap().content_type(), Some(CUSTOM));
 
-        assert_eq!(
-            op_guess.stat("test2.html").unwrap().content_type(),
-            Some(CUSTOM)
-        );
-
-        let entries = op_guess
-            .list_with("")
-            .metakey(Metakey::Complete)
-            .call()
-            .unwrap();
+        let entries = op.list_with("").metakey(Metakey::Complete).call().unwrap();
         assert_eq!(entries[0].metadata().content_type(), Some(HTML));
         assert_eq!(entries[1].metadata().content_type(), None);
         assert_eq!(entries[2].metadata().content_type(), Some(CUSTOM));
