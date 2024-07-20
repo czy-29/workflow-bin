@@ -131,6 +131,8 @@ struct GithubDeployConfig {
     org: String,
     repo: String,
     access_token: Option<String>,
+    user_email: Option<String>,
+    user_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -366,6 +368,24 @@ async fn deploy_github(config: &GithubDeployConfig, for_draft: bool) -> Result<(
     spawn_command(Command::new("git").arg("clone").arg(url), "git").await?;
     set_current_dir(repo)?;
 
+    tracing::info!("正在配置git环境……");
+    spawn_command(
+        Command::new("git")
+            .arg("config")
+            .arg("user.email")
+            .arg(config.user_email.as_ref().unwrap()),
+        "git",
+    )
+    .await?;
+    spawn_command(
+        Command::new("git")
+            .arg("config")
+            .arg("user.name")
+            .arg(config.user_name.as_ref().unwrap()),
+        "git",
+    )
+    .await?;
+
     if for_draft {
         tracing::info!("正在执行：git checkout draft");
         spawn_command(Command::new("git").arg("checkout").arg("draft"), "git").await?;
@@ -529,6 +549,10 @@ async fn main() -> Result<(), anyhow::Error> {
                     .alert_err(true)
                     .await?,
             );
+            config.github.user_email =
+                Some(env_var("DEPLOY_GITHUB_USER_EMAIL").alert_err(true).await?);
+            config.github.user_name =
+                Some(env_var("DEPLOY_GITHUB_USER_NAME").alert_err(true).await?);
             config.oss.access_key_id = Some(env_var("OSS_ACCESS_KEY_ID").alert_err(true).await?);
             config.oss.access_key_secret =
                 Some(env_var("OSS_ACCESS_KEY_SECRET").alert_err(true).await?);
