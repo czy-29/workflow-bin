@@ -1,13 +1,11 @@
 mod mem_probe;
 mod opendal_fs;
-mod opendal_mime_guess;
 
 use clap::Parser;
 use fs_extra::dir;
 use mem_probe::MemProbe;
-use opendal::{services::Oss, Operator};
+use opendal::{layers::MimeGuessLayer, services::Oss, Operator};
 use opendal_fs::{sync_dir, ConcurrentUploadTasks};
-use opendal_mime_guess::MimeGuessLayer;
 use pushover_rs::{send_pushover_request, PushoverSound};
 use serde::Deserialize;
 use std::{
@@ -428,19 +426,17 @@ async fn deploy_oss(config: &OssDeployConfig, for_draft: bool) -> Result<(), any
 
     tracing::info!("正在初始化Operator……");
     let sync = &config.sync;
-    let mut oss = Oss::default();
-
-    oss.root(&sync.root);
-    oss.access_key_id(config.access_key_id.as_ref().unwrap());
-    oss.access_key_secret(config.access_key_secret.as_ref().unwrap());
-
-    if for_draft {
-        oss.bucket(&env_var("OSS_DRAFT_BUCKET")?);
-        oss.endpoint(&env_var("OSS_DRAFT_ENDPOINT")?);
+    let oss = Oss::default()
+        .root(&sync.root)
+        .access_key_id(config.access_key_id.as_ref().unwrap())
+        .access_key_secret(config.access_key_secret.as_ref().unwrap());
+    let oss = if for_draft {
+        oss.bucket(&env_var("OSS_DRAFT_BUCKET")?)
+            .endpoint(&env_var("OSS_DRAFT_ENDPOINT")?)
     } else {
-        oss.bucket(&env_var("OSS_PROD_BUCKET")?);
-        oss.endpoint(&env_var("OSS_PROD_ENDPOINT")?);
-    }
+        oss.bucket(&env_var("OSS_PROD_BUCKET")?)
+            .endpoint(&env_var("OSS_PROD_ENDPOINT")?)
+    };
 
     let op = Operator::new(oss)?
         .layer(MimeGuessLayer::default())
