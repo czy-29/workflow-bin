@@ -16,8 +16,8 @@ impl MemProbe {
 
                 loop {
                     sample += 1;
-                    sys.refresh_process_specifics(
-                        pid,
+                    sys.refresh_processes_specifics(
+                        sysinfo::ProcessesToUpdate::Some(&[pid]),
                         sysinfo::ProcessRefreshKind::new().with_memory(),
                     );
 
